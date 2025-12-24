@@ -13,6 +13,30 @@ import {
   SafetyCertificateFilled,
   ReloadOutlined
 } from '@ant-design/icons';
+import {
+  DndContext, 
+  closestCenter,
+  KeyboardSensor,
+  MouseSensor,
+  TouchSensor,
+  useSensor,
+  useSensors,
+  DragEndEvent,
+  DragOverlay,
+  DragStartEvent,
+  defaultDropAnimationSideEffects,
+  DropAnimation
+} from '@dnd-kit/core';
+import {
+  arrayMove,
+  SortableContext,
+  sortableKeyboardCoordinates,
+  rectSortingStrategy,
+  useSortable,
+  defaultAnimateLayoutChanges,
+  AnimateLayoutChanges
+} from '@dnd-kit/sortable';
+import { CSS } from '@dnd-kit/utilities';
 import { v4 as uuidv4 } from 'uuid';
 import ImageTask from './components/ImageTask';
 import type { AppConfig, TaskConfig } from './types/app';
@@ -31,6 +55,58 @@ import { calculateSuccessRate, formatDuration } from './utils/stats';
 const { Header, Content } = Layout;
 const { Title, Text } = Typography;
 
+interface SortableTaskItemProps {
+  task: TaskConfig;
+  config: AppConfig;
+  onRemove: (id: string) => void;
+  onStatsUpdate: (type: 'request' | 'success' | 'fail', duration?: number) => void;
+}
+
+const animateLayoutChanges: AnimateLayoutChanges = (args) =>
+  defaultAnimateLayoutChanges({ ...args, wasDragging: true });
+
+const SortableTaskItem = ({ task, config, onRemove, onStatsUpdate }: SortableTaskItemProps) => {
+  const {
+    attributes,
+    listeners,
+    setNodeRef,
+    transform,
+    transition,
+    isDragging
+  } = useSortable({ 
+    id: task.id,
+    animateLayoutChanges
+  });
+
+  const style = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+    zIndex: isDragging ? 999 : 'auto',
+    opacity: isDragging ? 0 : 1,
+  };
+
+  return (
+    <Col 
+      id={task.id}
+      xs={24} sm={12} xl={8} 
+      ref={setNodeRef} 
+      style={style}
+    >
+      <div className="fade-in-up" style={{ height: '100%' }}>
+        <ImageTask
+          id={task.id}
+          storageKey={getTaskStorageKey(task.id)}
+          config={config}
+          onRemove={() => onRemove(task.id)}
+          onStatsUpdate={onStatsUpdate}
+          dragAttributes={attributes}
+          dragListeners={listeners}
+        />
+      </div>
+    </Col>
+  );
+};
+
 function App() {
   const [config, setConfig] = useState<AppConfig>(() => loadConfig());
   const [tasks, setTasks] = useState<TaskConfig[]>(() => loadTasks());
@@ -38,7 +114,88 @@ function App() {
   const [configVisible, setConfigVisible] = useState(false);
   const [models, setModels] = useState<{label: string, value: string}[]>([]);
   const [loadingModels, setLoadingModels] = useState(false);
+  const [activeId, setActiveId] = useState<string | null>(null);
+  const [activeItemWidth, setActiveItemWidth] = useState<number | undefined>(undefined);
   const [form] = Form.useForm();
+
+  const sensors = useSensors(
+    useSensor(MouseSensor),
+    useSensor(TouchSensor, {
+      activationConstraint: {
+        delay: 250,
+        tolerance: 5,
+      },
+    }),
+    useSensor(KeyboardSensor, {
+      coordinateGetter: sortableKeyboardCoordinates,
+    })
+  );
+
+  const handleDragStart = (event: DragStartEvent) => {
+    const { active } = event;
+    setActiveId(active.id as string);
+    const node = document.getElementById(active.id as string);
+    if (node) {
+      // 获取内部内容容器的宽度，排除 Col 的 padding 影响
+      const innerContent = node.querySelector('.fade-in-up') as HTMLElement;
+      if (innerContent) {
+        setActiveItemWidth(innerContent.offsetWidth);
+      } else {
+        setActiveItemWidth(node.offsetWidth);
+      }
+    }
+  };
+
+  const handleDragEnd = (event: DragEndEvent) => {
+    const { active, over } = event;
+    setActiveId(null);
+    setActiveItemWidth(undefined);
+
+    if (active.id !== over?.id) {
+      setTasks((items) => {
+        const oldIndex = items.findIndex((item) => item.id === active.id);
+        const newIndex = items.findIndex((item) => item.id === over?.id);
+        return arrayMove(items, oldIndex, newIndex);
+      });
+    }
+  };
+
+  const handleDragCancel = () => {
+    setActiveId(null);
+    setActiveItemWidth(undefined);
+  };
+
+  const dropAnimation: DropAnimation = {
+    duration: 300,
+    easing: 'cubic-bezier(0.18, 0.67, 0.6, 1.22)',
+    sideEffects: (args) => {
+      const { dragOverlay } = args;
+      const defaultFn = defaultDropAnimationSideEffects({
+        styles: {
+          active: {
+            opacity: '0',
+          },
+        },
+      });
+      const cleanup = defaultFn(args);
+
+      const inner = dragOverlay.node.querySelector('.drag-overlay-item');
+      if (inner) {
+        inner.animate(
+          [
+            { transform: 'scale(1.02)' },
+            { transform: 'scale(1)' }
+          ],
+          {
+            duration: 300,
+            easing: 'cubic-bezier(0.18, 0.67, 0.6, 1.22)',
+            fill: 'forwards'
+          }
+        );
+      }
+      return cleanup;
+    },
+  };
 
   React.useEffect(() => {
     if (typeof navigator === 'undefined' || !navigator.storage?.persist) return;
@@ -355,19 +512,51 @@ function App() {
             </Text>
           </div>
 
-          <Row gutter={[24, 24]}>
-            {tasks.map((task: TaskConfig) => (
-              <Col xs={24} sm={12} xl={8} key={task.id} className="fade-in-up">
-                <ImageTask
-                  id={task.id}
-                  storageKey={getTaskStorageKey(task.id)}
-                  config={config}
-                  onRemove={() => handleRemoveTask(task.id)}
-                  onStatsUpdate={updateGlobalStats}
-                />
-              </Col>
-            ))}
-          </Row>
+          <DndContext 
+            sensors={sensors} 
+            collisionDetection={closestCenter} 
+            onDragStart={handleDragStart}
+            onDragEnd={handleDragEnd}
+            onDragCancel={handleDragCancel}
+          >
+            <SortableContext 
+              items={tasks.map(t => t.id)}
+              strategy={rectSortingStrategy}
+            >
+              <Row gutter={[24, 24]}>
+                {tasks.map((task: TaskConfig) => (
+                  <SortableTaskItem 
+                    key={task.id} 
+                    task={task} 
+                    config={config}
+                    onRemove={handleRemoveTask}
+                    onStatsUpdate={updateGlobalStats}
+                  />
+                ))}
+              </Row>
+            </SortableContext>
+            <DragOverlay dropAnimation={dropAnimation}>
+              {activeId ? (
+                <div 
+                  className="drag-overlay-item" 
+                  style={{ 
+                    cursor: 'grabbing',
+                    width: activeItemWidth 
+                  }}
+                >
+                   <ImageTask
+                      id={activeId}
+                      storageKey={getTaskStorageKey(activeId)}
+                      config={config}
+                      onRemove={() => handleRemoveTask(activeId)}
+                      onStatsUpdate={updateGlobalStats}
+                      dragAttributes={{}}
+                      dragListeners={{}}
+                    />
+                </div>
+              ) : null}
+            </DragOverlay>
+          </DndContext>
         </Content>
 
         {/* 配置抽屉 */}

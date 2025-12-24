@@ -94,6 +94,17 @@ body {
   transform: scale(1.02);
 }
 
+/* 拖动时的浮起动画 */
+@keyframes pop {
+  0% { transform: scale(1); box-shadow: var(--shadow-sm); }
+  100% { transform: scale(1.02); box-shadow: var(--shadow-lg); }
+}
+
+.drag-overlay-item {
+  animation: pop 0.2s cubic-bezier(0.18, 0.67, 0.6, 1.22) forwards;
+  cursor: grabbing;
+}
+
 /* 通用卡片样式 */
 .moe-card {
   background: var(--c-bg-card);

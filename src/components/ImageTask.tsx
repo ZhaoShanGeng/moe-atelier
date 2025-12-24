@@ -9,7 +9,8 @@ import {
   CloseCircleFilled, PauseCircleFilled, FireFilled,
   StarFilled,
   LoadingOutlined,
-  PlayCircleFilled
+  PlayCircleFilled,
+  HolderOutlined
 } from '@ant-design/icons';
 import type { RcFile, UploadFile } from 'antd/es/upload/interface';
 import axios from 'axios';
@@ -37,6 +38,8 @@ interface ImageTaskProps {
   config: AppConfig;
   onRemove: () => void;
   onStatsUpdate: (type: 'request' | 'success' | 'fail', duration?: number) => void;
+  dragAttributes?: any;
+  dragListeners?: any;
 }
 const SUCCESS_AUDIO_SRC = 'https://actions.google.com/sounds/v1/cartoon/magic_chime.ogg'; 
 
@@ -74,7 +77,7 @@ const serializeUploads = (uploads: UploadFileWithMeta[]): PersistedUploadImage[]
       localKey: file.localKey as string,
     }));
 
-const ImageTask: React.FC<ImageTaskProps> = ({ id, storageKey, config, onRemove, onStatsUpdate }: ImageTaskProps) => {
+const ImageTask: React.FC<ImageTaskProps> = ({ id, storageKey, config, onRemove, onStatsUpdate, dragAttributes, dragListeners }: ImageTaskProps) => {
   const [prompt, setPrompt] = useState('');
   const [fileList, setFileList] = useState<UploadFileWithMeta[]>([]);
   const [concurrency, setConcurrency] = useState<number>(2);
@@ -667,6 +670,20 @@ const ImageTask: React.FC<ImageTaskProps> = ({ id, storageKey, config, onRemove,
         background: '#fff'
       }}>
         <Space>
+          <div 
+            style={{ 
+              cursor: 'grab', 
+              marginRight: 4, 
+              display: 'flex', 
+              alignItems: 'center',
+              color: '#D0C0C0',
+              touchAction: 'none'
+            }}
+            {...dragAttributes}
+            {...dragListeners}
+          >
+            <HolderOutlined style={{ fontSize: 16 }} />
+          </div>
           <div style={{ 
             width: 28, height: 28, 
             background: '#FFF0F3', 
