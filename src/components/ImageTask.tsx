@@ -880,6 +880,10 @@ const ImageTask: React.FC<ImageTaskProps> = ({ id, storageKey, config, backendMo
         role: 'user',
         content,
       });
+      messages.push({
+        role: 'user',
+        content: ' ',
+      });
 
       const headers = {
         'Authorization': `Bearer ${config.apiKey}`,

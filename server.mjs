@@ -504,10 +504,14 @@ const abortActiveController = (subTaskId) => {
   }
 }
 
-const updateStats = (stats, type, duration) => {
+const updateStats = (stats, type, duration, count = 1) => {
   const next = { ...stats }
   if (type === 'request') {
-    next.totalRequests += 1
+    const increment =
+      typeof count === 'number' && Number.isFinite(count)
+        ? Math.max(0, Math.floor(count))
+        : 1
+    next.totalRequests += increment
   }
   if (type === 'success') {
     next.successCount += 1
@@ -520,9 +524,9 @@ const updateStats = (stats, type, duration) => {
   return next
 }
 
-const updateGlobalStats = async (type, duration) => {
+const updateGlobalStats = async (type, duration, count) => {
   const state = await loadBackendState()
-  const stats = updateStats(state.globalStats, type, duration)
+  const stats = updateStats(state.globalStats, type, duration, count)
   await saveBackendState({ ...state, globalStats: stats })
 }
 
@@ -547,7 +551,10 @@ const buildMessagesForTask = async (taskState) => {
       console.warn('读取上传图片失败:', err)
     }
   }
-  return [{ role: 'user', content }]
+  return [
+    { role: 'user', content },
+    { role: 'user', content: ' ' },
+  ]
 }
 
 const readResponseError = async (response) => {
@@ -726,7 +733,8 @@ const scheduleRetry = (taskId, subTaskId) => {
   retryTimers.set(subTaskId, timer)
 }
 
-const runSubTask = async (taskId, subTaskId) => {
+const runSubTask = async (taskId, subTaskId, options = {}) => {
+  const countRequest = options.countRequest !== false
   if (activeControllers.has(subTaskId)) return
   clearRetryTimer(subTaskId)
   const controller = new AbortController()
@@ -759,9 +767,13 @@ const runSubTask = async (taskId, subTaskId) => {
     autoRetry: currentResult?.autoRetry !== false,
     savedLocal: false,
   }
-  taskState.stats = updateStats(taskState.stats, 'request')
+  if (countRequest) {
+    taskState.stats = updateStats(taskState.stats, 'request')
+  }
   await saveTaskState(taskId, taskState)
-  await updateGlobalStats('request')
+  if (countRequest) {
+    await updateGlobalStats('request')
+  }
 
   try {
     const backendState = await loadBackendState()
@@ -853,12 +865,14 @@ const startGeneration = async (taskId) => {
     autoRetry: true,
     savedLocal: false,
   }))
+  taskState.stats = updateStats(taskState.stats, 'request', undefined, concurrency)
   await saveTaskState(taskId, taskState)
+  await updateGlobalStats('request', undefined, concurrency)
   const removedKeys = getRemovedImageKeys(previousState, taskState)
   await cleanupUnusedImages(removedKeys)
   scheduleOrphanCleanup()
   taskState.results.forEach((result) => {
-    void runSubTask(taskId, result.id)
+    void runSubTask(taskId, result.id, { countRequest: false })
   })
   return taskState
 }
