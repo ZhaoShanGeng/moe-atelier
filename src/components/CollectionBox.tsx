@@ -750,7 +750,18 @@ const CollectionBox: React.FC<CollectionBoxProps> = ({
               </span>
             </Space>
             {collectedItems.length > 0 && (
-              <Button type="text" danger size="small" onClick={onClear}>清空</Button>
+              <Button 
+                size="small" 
+                icon={<DeleteFilled />}
+                onClick={onClear}
+                style={{ 
+                  background: 'rgba(255,255,255,0.6)', 
+                  border: '1px solid #FF9EB5', 
+                  color: '#FF9EB5' 
+                }}
+              >
+                清空
+              </Button>
             )}
           </div>
         }

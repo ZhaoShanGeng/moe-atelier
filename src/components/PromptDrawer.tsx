@@ -10,7 +10,8 @@ import {
   PlusCircleFilled, AppstoreFilled,
   FilterFilled, UserOutlined, FileTextOutlined,
   FireFilled, LeftOutlined, RightOutlined,
-  CopyOutlined, CompassFilled
+  CopyOutlined, CompassFilled, CloudUploadOutlined,
+  EyeInvisibleOutlined
 } from '@ant-design/icons';
 import type { PromptData, PromptItem } from '../types/prompt';
 import { safeStorageGet, safeStorageSet } from '../utils/storage';
@@ -83,6 +84,7 @@ const PromptDrawer: React.FC<PromptDrawerProps> = ({ visible, onClose, onCreateT
   const [previewImageIndex, setPreviewImageIndex] = useState(0);
   const [activeVariantIndex, setActiveVariantIndex] = useState(0); // 0: Main, 1+: Variants
   const [imageAspectRatio, setImageAspectRatio] = useState<'landscape' | 'portrait' | null>(null);
+  const [revealedImages, setRevealedImages] = useState<Set<string>>(new Set());
 
   useEffect(() => {
     if (visible && !data) {
@@ -134,11 +136,48 @@ const PromptDrawer: React.FC<PromptDrawerProps> = ({ visible, onClose, onCreateT
     );
   };
 
+  const isNSFW = (prompt: ExtendedPromptItem) => {
+    return prompt.tags?.some(tag => ['r18', 'nsfw', '猎奇', 'guro'].includes(tag.toLowerCase()));
+  };
+
+  const toggleReveal = (e: React.MouseEvent, id: string) => {
+    e.stopPropagation();
+    setRevealedImages(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) {
+        next.delete(id);
+      } else {
+        next.add(id);
+      }
+      return next;
+    });
+  };
+
   const handleUsePrompt = (content: string) => {
     onCreateTask(content);
     setPreviewPrompt(null);
     onClose();
     message.success('已应用提示词 ✨');
+  };
+
+  const handleContribute = () => {
+    Modal.confirm({
+      title: '投稿提示词',
+      icon: <CloudUploadOutlined style={{ color: COLORS.primary }} />,
+      content: (
+        <div>
+          <p>欢迎前往投稿页面分享您的提示词！</p>
+          <p>投稿地址：<a href="https://bmzxdlj.cn" target="_blank" rel="noopener noreferrer">https://bmzxdlj.cn</a></p>
+        </div>
+      ),
+      okText: '前往投稿',
+      cancelText: '取消',
+      onOk: () => {
+        window.open('https://bmzxdlj.cn', '_blank');
+      },
+      maskClosable: true,
+      centered: true
+    });
   };
 
   // 数据处理
@@ -459,6 +498,19 @@ const PromptDrawer: React.FC<PromptDrawerProps> = ({ visible, onClose, onCreateT
               </Space>
               <Space size={8}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                  {sourceUrl === DEFAULT_DATA_SOURCE && (
+                    <Button 
+                      icon={<CloudUploadOutlined />} 
+                      onClick={handleContribute}
+                      style={{ 
+                        borderRadius: 12,
+                        border: `1px solid ${COLORS.secondary}`,
+                        color: COLORS.textLight
+                      }}
+                    >
+                      投稿
+                    </Button>
+                  )}
                   <Select
                     style={{ width: 180 }}
                     value={sourceUrl === DEFAULT_DATA_SOURCE ? DEFAULT_DATA_SOURCE : 'custom'}
@@ -512,7 +564,7 @@ const PromptDrawer: React.FC<PromptDrawerProps> = ({ visible, onClose, onCreateT
         }}
         width={isMobile ? "100%" : undefined}
       >
-        <div style={{ display: 'flex', flex: 1, minHeight: 0, overflow: 'hidden' }}>
+        <div style={{ display: 'flex', flex: 1, minHeight: 0, overflow: 'hidden', position: 'relative' }}>
           {/* Desktop Sidebar */}
           {!isMobile && (
             <div style={{ width: 260, flexShrink: 0, minHeight: 0, overflow: 'hidden' }}>
@@ -559,12 +611,51 @@ const PromptDrawer: React.FC<PromptDrawerProps> = ({ visible, onClose, onCreateT
                   >
                     <div style={{ position: 'relative', aspectRatio: '1/1', background: '#FAFAFA', overflow: 'hidden' }}>
                       {prompt.images && prompt.images.length > 0 ? (
-                        <img 
-                          src={prompt.images[0]} 
-                          alt={prompt.title}
-                          style={{ width: '100%', height: '100%', objectFit: 'cover' }}
-                          loading="lazy"
-                        />
+                        <>
+                          <img 
+                            src={prompt.images[0]} 
+                            alt={prompt.title}
+                            style={{ 
+                              width: '100%', 
+                              height: '100%', 
+                              objectFit: 'cover',
+                              filter: (isNSFW(prompt) && !revealedImages.has(prompt.id)) ? 'blur(20px)' : 'none',
+                              transition: 'filter 0.3s ease'
+                            }}
+                            loading="lazy"
+                          />
+                          {isNSFW(prompt) && !revealedImages.has(prompt.id) && (
+                            <div 
+                              style={{
+                                position: 'absolute',
+                                top: 0, left: 0, right: 0, bottom: 0,
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'center',
+                                background: 'rgba(255,255,255,0.2)',
+                                backdropFilter: 'blur(4px)',
+                                cursor: 'pointer',
+                                zIndex: 5
+                              }}
+                              onClick={(e) => toggleReveal(e, prompt.id)}
+                            >
+                              <div style={{
+                                background: 'rgba(0,0,0,0.6)',
+                                borderRadius: 20,
+                                padding: '6px 16px',
+                                color: '#fff',
+                                display: 'flex',
+                                alignItems: 'center',
+                                gap: 6,
+                                fontSize: 13,
+                                fontWeight: 600
+                              }}>
+                                <EyeInvisibleOutlined />
+                                <span>点击显示</span>
+                              </div>
+                            </div>
+                          )}
+                        </>
                       ) : (
                         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%', color: COLORS.secondary }}>
                           <FileTextOutlined style={{ fontSize: 32 }} />
@@ -573,7 +664,8 @@ const PromptDrawer: React.FC<PromptDrawerProps> = ({ visible, onClose, onCreateT
                       
                       {/* Tags Overlay */}
                       <div style={{ 
-                        position: 'absolute', top: 8, left: 8, right: 8, display: 'flex', justifyContent: 'space-between'
+                        position: 'absolute', top: 8, left: 8, right: 8, display: 'flex', justifyContent: 'space-between',
+                        zIndex: 10
                       }}>
                          <div style={{ 
                           background: 'rgba(255,255,255,0.9)', 
@@ -607,7 +699,8 @@ const PromptDrawer: React.FC<PromptDrawerProps> = ({ visible, onClose, onCreateT
                           width: 28, height: 28, borderRadius: '50%',
                           display: 'flex', alignItems: 'center', justifyContent: 'center',
                           cursor: 'pointer',
-                          boxShadow: '0 2px 8px rgba(0,0,0,0.1)'
+                          boxShadow: '0 2px 8px rgba(0,0,0,0.1)',
+                          zIndex: 10
                         }}
                         onClick={(e) => toggleFavorite(e, prompt.id)}
                       >
@@ -641,6 +734,36 @@ const PromptDrawer: React.FC<PromptDrawerProps> = ({ visible, onClose, onCreateT
               </div>
             )}
           </div>
+
+          {/* Mobile FAB */}
+          {isMobile && sourceUrl === DEFAULT_DATA_SOURCE && (
+            <div style={{
+              position: 'absolute',
+              bottom: 24,
+              right: 24,
+              zIndex: 100
+            }}>
+              <Tooltip title="投稿提示词" placement="left">
+                <Button
+                  type="primary"
+                  shape="circle"
+                  size="large"
+                  icon={<CloudUploadOutlined style={{ fontSize: 24 }} />}
+                  onClick={handleContribute}
+                  style={{
+                    width: 56,
+                    height: 56,
+                    boxShadow: '0 4px 16px rgba(255, 158, 181, 0.5)',
+                    background: `linear-gradient(135deg, ${COLORS.primary}, ${COLORS.secondary})`,
+                    border: 'none',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center'
+                  }}
+                />
+              </Tooltip>
+            </div>
+          )}
         </div>
 
         {/* Mobile Filter Drawer */}
